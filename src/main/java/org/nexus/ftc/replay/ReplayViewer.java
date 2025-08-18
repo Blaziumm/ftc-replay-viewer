@@ -74,7 +74,8 @@ public class ReplayViewer extends Application {
         // Animation timer for playback
         animationTimer = new AnimationTimer() {
             private long lastUpdateTime = 0;
-            private long accumulatedMs = 0; // For very slow speeds
+            private FrameData lastFrame = null;
+            private double accumulatedTime = 0;
 
             @Override
             public void handle(long now) {
@@ -82,25 +83,121 @@ public class ReplayViewer extends Application {
 
                 if (lastUpdateTime == 0) {
                     lastUpdateTime = now;
+                    lastFrame = replayData.frames.get(currentFrameIndex);
                     return;
                 }
 
                 // Convert nanoseconds to milliseconds
-                long elapsedMs = (now - lastUpdateTime) / 10000000;
+                long elapsedMs = (now - lastUpdateTime) / 1_000_000;
+                long adjustedElapsedMs = (long)(elapsedMs * playbackSpeed);
 
-                // For very slow speeds, we accumulate time until we have enough to move
-                accumulatedMs += elapsedMs;
+                // Limit large jumps
+                adjustedElapsedMs = Math.min(adjustedElapsedMs, 100);
 
-                // Only update when we've accumulated enough time based on speed
-                if (accumulatedMs * playbackSpeed >= 1) {
-                    long adjustedElapsedMs = (long)(accumulatedMs * playbackSpeed);
-                    updateToNextFrame(adjustedElapsedMs);
-                    accumulatedMs = 0; // Reset accumulator after update
+                // Find current frame
+                FrameData currentFrame = replayData.frames.get(currentFrameIndex);
+
+                // Add elapsed time to accumulated time
+                accumulatedTime += adjustedElapsedMs;
+
+                // Find next frame based on accumulated time
+                long targetTime = currentFrame.timeMs + (long)accumulatedTime;
+
+                // Find the appropriate frame for the target time
+                boolean frameChanged = false;
+                while (currentFrameIndex < replayData.frames.size() - 1 &&
+                        replayData.frames.get(currentFrameIndex + 1).timeMs <= targetTime) {
+                    currentFrameIndex++;
+                    frameChanged = true;
+                }
+
+                if (frameChanged) {
+                    // Reset accumulated time based on actual frame time
+                    FrameData newFrame = replayData.frames.get(currentFrameIndex);
+                    accumulatedTime -= (newFrame.timeMs - currentFrame.timeMs);
+
+                    // Update display with interpolation between frames
+                    updateDisplayWithInterpolation(currentFrame, newFrame, accumulatedTime /
+                            Math.max(1, newFrame.timeMs - currentFrame.timeMs));
+                } else {
+                    // Interpolate between current frame and next frame
+                    if (currentFrameIndex < replayData.frames.size() - 1) {
+                        FrameData nextFrame = replayData.frames.get(currentFrameIndex + 1);
+                        double factor = accumulatedTime /
+                                Math.max(1, nextFrame.timeMs - currentFrame.timeMs);
+                        updateDisplayWithInterpolation(currentFrame, nextFrame, factor);
+                    }
+                }
+
+                // Update slider position
+                updateTimelineSlider();
+
+                // Check if we've reached the end
+                if (currentFrameIndex >= replayData.frames.size() - 1) {
+                    isPlaying = false;
+                    animationTimer.stop();
                 }
 
                 lastUpdateTime = now;
             }
         };
+    }
+
+    private void updateTimelineSlider() {
+        if (replayData == null) return;
+
+        double percentage = 100.0 * currentFrameIndex / (replayData.frames.size() - 1);
+        timelineSlider.setValue(percentage);
+    }
+
+    private void updateDisplayWithInterpolation(FrameData frame1, FrameData frame2, double factor) {
+        // Clamp factor to [0,1]
+        factor = Math.max(0, Math.min(1, factor));
+
+        // Interpolate position and heading
+        double x = frame1.x + (frame2.x - frame1.x) * factor;
+        double y = frame1.y + (frame2.y - frame1.y) * factor;
+        double heading = interpolateAngle(frame1.heading, frame2.heading, factor);
+
+        // Draw the interpolated position
+        drawEmptyField();
+        drawRobot(x, y, heading);
+
+        // Use closest frame's data for display
+        updateCustomDataDisplay(factor < 0.5 ? frame1 : frame2);
+
+        // Update time display
+        long interpolatedTimeMs = frame1.timeMs + (long)((frame2.timeMs - frame1.timeMs) * factor);
+        updateTimeDisplay(interpolatedTimeMs);
+    }
+
+    // Helper method for angle interpolation (handles wraparound correctly)
+    private double interpolateAngle(double a, double b, double factor) {
+        // Normalize angles to [0, 360)
+        a = ((a % 360) + 360) % 360;
+        b = ((b % 360) + 360) % 360;
+
+        // Find the shortest path
+        double diff = b - a;
+        if (diff > 180) {
+            diff -= 360;
+        } else if (diff < -180) {
+            diff += 360;
+        }
+
+        // Interpolate
+        double result = a + diff * factor;
+
+        // Normalize result
+        return ((result % 360) + 360) % 360;
+    }
+
+    private void updateTimeDisplay(long timeMs) {
+        long seconds = timeMs / 1000;
+        long minutes = seconds / 60;
+        seconds %= 60;
+        long millis = timeMs % 1000;
+        timeLabel.setText(String.format("Time: %d:%02d.%03d", minutes, seconds, millis));
     }
 
     private void drawEmptyField() {
@@ -177,8 +274,9 @@ public class ReplayViewer extends Application {
         playButton.setOnAction(e -> {
             isPlaying = !isPlaying;
             playButton.setText(isPlaying ? "Pause" : "Play");
+
             if (isPlaying) {
-                // Reset timer state when starting playback
+                // Reset timer to prevent jumps
                 animationTimer.stop();
                 animationTimer.start();
             } else {
@@ -188,14 +286,22 @@ public class ReplayViewer extends Application {
 
         Button resetButton = new Button("Reset");
         resetButton.setOnAction(e -> {
+            isPlaying = false;
+            animationTimer.stop();
+
             currentFrameIndex = 0;
             updateDisplay();
+            updateTimelineSlider();
         });
 
         timelineSlider = new Slider();
         timelineSlider.setPrefWidth(500);
         timelineSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             if (replayData != null) {
+                // Stop playback when moving slider
+                isPlaying = false;
+                animationTimer.stop();
+
                 currentFrameIndex = (int)Math.floor(newVal.doubleValue() * (replayData.frames.size() - 1) / 100);
                 updateDisplay();
             }
@@ -281,6 +387,8 @@ public class ReplayViewer extends Application {
 
             if (selectedFile != null) {
                 loadReplayFile(selectedFile);
+                isPlaying = false;
+                animationTimer.stop();
                 currentFrameIndex = 0;
                 updateDisplay();
             }
@@ -341,33 +449,10 @@ public class ReplayViewer extends Application {
         Label matchLabel = new Label("Match: " + replayData.match);
         Label dateLabel = new Label("Date: " + new java.util.Date(replayData.date));
         Label framesLabel = new Label("Total Frames: " + replayData.frames.size());
+        Label durationLabel = new Label(String.format("Match Duration: %.1f seconds",
+                replayData.frames.get(replayData.frames.size()-1).timeMs / 1000.0));
 
-        customDataPanel.getChildren().addAll(teamLabel, matchLabel, dateLabel, framesLabel);
-    }
-
-    private void updateToNextFrame(long elapsedMs) {
-        if (replayData == null || replayData.frames.isEmpty()) return;
-
-        // Find next frame based on elapsed time
-        FrameData currentFrame = replayData.frames.get(currentFrameIndex);
-        long targetTime = currentFrame.timeMs + elapsedMs;
-
-        // Find the appropriate frame for the target time
-        for (int i = currentFrameIndex + 1; i < replayData.frames.size(); i++) {
-            if (replayData.frames.get(i).timeMs >= targetTime) {
-                currentFrameIndex = i;
-                break;
-            }
-        }
-
-        // Update the display
-        updateDisplay();
-
-        // Check if we've reached the end
-        if (currentFrameIndex >= replayData.frames.size() - 1) {
-            isPlaying = false;
-            animationTimer.stop();
-        }
+        customDataPanel.getChildren().addAll(teamLabel, matchLabel, dateLabel, framesLabel, durationLabel);
     }
 
     private void updateDisplay() {
@@ -376,17 +461,8 @@ public class ReplayViewer extends Application {
         // Get current frame
         FrameData frame = replayData.frames.get(currentFrameIndex);
 
-        // Update time slider
-        double percentage = 100.0 * currentFrameIndex / (replayData.frames.size() - 1);
-        timelineSlider.setValue(percentage);
-
         // Update time label
-        long timeMs = frame.timeMs;
-        long seconds = timeMs / 1000;
-        long minutes = seconds / 60;
-        seconds %= 60;
-        long millis = timeMs % 1000;
-        timeLabel.setText(String.format("Time: %d:%02d.%03d", minutes, seconds, millis));
+        updateTimeDisplay(frame.timeMs);
 
         // Redraw field
         drawEmptyField();
@@ -423,7 +499,7 @@ public class ReplayViewer extends Application {
         }
 
         // Replace previous custom data display
-        if (customDataPanel.getChildren().size() > 4) {
+        if (customDataPanel.getChildren().size() > 5) {
             customDataPanel.getChildren().set(customDataPanel.getChildren().size() - 1, dataBox);
         } else {
             customDataPanel.getChildren().add(dataBox);
