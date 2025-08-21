@@ -1,0 +1,22 @@
+<component name="ArtifactManager">
+  <artifact type="javafx" name="ftc-replay-viewer.main">
+    <output-path>$PROJECT_DIR$/out/artifacts/ftc_replay_viewer_main</output-path>
+    <properties id="javafx-properties">
+      <options>
+        <option name="appClass" value="org.nexus.ftc.replay.ReplayViewer" />
+        <option name="description" value="" />
+        <option name="height" value="900" />
+        <option name="htmlPlaceholderId" value="" />
+        <option name="title" value="FTC ReplayViewer" />
+        <option name="vendor" value="Talons 3796" />
+        <option name="version" value="" />
+        <option name="width" value="1200" />
+      </options>
+    </properties>
+    <root id="root">
+      <element id="archive" name="ftc_replay_viewer_main.jar">
+        <element id="module-output" name="ftc-replay-viewer.main" />
+      </element>
+    </root>
+  </artifact>
+</component>

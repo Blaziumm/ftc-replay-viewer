@@ -24,7 +24,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("org.nexus.ftc.replay.ReplayViewer")
+    mainClass.set("org.nexus.ftc.replay.ReplayViewerLauncher")
 }
 
 javafx {

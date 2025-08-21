@@ -1,12 +1,15 @@
 package org.nexus.ftc.replay;
 
 import javafx.application.Application;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
+import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -43,9 +46,14 @@ public class ReplayViewer extends Application {
     private AnimationTimer animationTimer;
     private VBox customDataPanel;
 
+    private Image fieldBackgroundImage;
+
+
     @Override
     public void start(Stage primaryStage) {
         BorderPane root = new BorderPane();
+
+        fieldBackgroundImage = new Image("file:src/main/resources/field_background.png");
 
         // Field canvas (top-down view)
         fieldCanvas = new Canvas(800, 800);
@@ -65,11 +73,34 @@ public class ReplayViewer extends Application {
         HBox menuBar = createMenuBar(primaryStage);
         root.setTop(menuBar);
 
+        controlPanel.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
+        playbackControls.setStyle("-fx-padding: 10; -fx-background-color: #333; -fx-text-fill: #eee;");
+        menuBar.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
+
+
+
+
         // Create scene
         Scene scene = new Scene(root, 1200, 900);
+        scene.setFill(Color.web("#222222")); // Dark background
+        controlPanel.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
+        playbackControls.setStyle("-fx-padding: 10; -fx-background-color: #333; -fx-text-fill: #eee;");
+        menuBar.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
+
+
+        customDataPanel.setStyle("-fx-padding: 5; -fx-background-color: #222; -fx-text-fill: #eee;");
+
         primaryStage.setTitle("FTC Match Replay Viewer");
         primaryStage.setScene(scene);
         primaryStage.show();
+
+
+        for (javafx.scene.Node node : customDataPanel.getChildren()) {
+            if (node instanceof Label) {
+                ((Label) node).setStyle("-fx-text-fill: #eee;");
+            }
+        }
+
 
         // Animation timer for playback
         animationTimer = new AnimationTimer() {
@@ -132,10 +163,13 @@ public class ReplayViewer extends Application {
                 // Update slider position
                 updateTimelineSlider();
 
-                // Check if we've reached the end
+                // Loop playback when reaching the end
                 if (currentFrameIndex >= replayData.frames.size() - 1) {
-                    isPlaying = false;
-                    animationTimer.stop();
+                    currentFrameIndex = 0;
+                    accumulatedTime = 0;
+                    lastUpdateTime = now;
+                    // Optionally update display for the first frame
+                    updateDisplay();
                 }
 
                 lastUpdateTime = now;
@@ -201,22 +235,32 @@ public class ReplayViewer extends Application {
     }
 
     private void drawEmptyField() {
-        // Draw the FTC field
-        gc.setFill(Color.LIGHTGRAY);
+        // Draw the FTC field background image inside the border
+        double borderX = 50;
+        double borderY = 50;
+        double borderWidth = fieldCanvas.getWidth() - 100;
+        double borderHeight = fieldCanvas.getHeight() - 100;
+
+        // Fill background with dark color
+        gc.setFill(Color.web("#222222"));
         gc.fillRect(0, 0, fieldCanvas.getWidth(), fieldCanvas.getHeight());
 
-        // Draw field elements (perimeter, scoring locations, etc.)
-        gc.setStroke(Color.BLACK);
-        gc.setLineWidth(3);
-        gc.strokeRect(50, 50, fieldCanvas.getWidth() - 100, fieldCanvas.getHeight() - 100);
+        // Draw image inside border
+        if (fieldBackgroundImage != null) {
+            gc.drawImage(fieldBackgroundImage, borderX, borderY, borderWidth, borderHeight);
+        }
 
-        // Draw grid lines
+        // Draw field elements (perimeter, grid, etc.) with dark gray
+        gc.setStroke(Color.web("#444444"));
+        gc.setLineWidth(3);
+        gc.strokeRect(borderX, borderY, borderWidth, borderHeight);
+
         gc.setLineWidth(0.5);
         for (int i = 0; i <= 6; i++) {
-            double x = 50 + i * (fieldCanvas.getWidth() - 100) / 6;
-            double y = 50 + i * (fieldCanvas.getHeight() - 100) / 6;
-            gc.strokeLine(50, y, fieldCanvas.getWidth() - 50, y);
-            gc.strokeLine(x, 50, x, fieldCanvas.getHeight() - 50);
+            double x = borderX + i * borderWidth / 6;
+            double y = borderY + i * borderHeight / 6;
+            gc.strokeLine(borderX, y, borderX + borderWidth, y);
+            gc.strokeLine(x, borderY, x, borderY + borderHeight);
         }
     }
 
@@ -252,11 +296,13 @@ public class ReplayViewer extends Application {
 
     private VBox createControlPanel() {
         VBox panel = new VBox(10);
-        panel.setStyle("-fx-padding: 10; -fx-background-color: #f0f0f0;");
+        panel.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
         panel.setPrefWidth(300);
 
         Label title = new Label("Match Data");
-        title.setStyle("-fx-font-weight: bold; -fx-font-size: 16;");
+
+
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 16; -fx-text-fill: #eee; ");
 
         // Create panel for custom data that will be updated when replay is loaded
         customDataPanel = new VBox(5);
@@ -268,8 +314,7 @@ public class ReplayViewer extends Application {
 
     private HBox createPlaybackControls() {
         HBox controls = new HBox(10);
-        controls.setStyle("-fx-padding: 10; -fx-background-color: #e0e0e0;");
-
+        controls.setStyle("-fx-padding: 10; -fx-background-color: #333; -fx-text-fill: #eee;");
         Button playButton = new Button("Play");
         playButton.setOnAction(e -> {
             isPlaying = !isPlaying;
@@ -313,6 +358,7 @@ public class ReplayViewer extends Application {
         speedSlider.setShowTickMarks(true);
         speedSlider.setShowTickLabels(true);
         speedSlider.setMajorTickUnit(0.1);
+        speedSlider.setValue(1);
 
         Label speedLabel = new Label("Speed: 0.05x (1/20 speed)");
         speedSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
@@ -366,17 +412,29 @@ public class ReplayViewer extends Application {
         timeLabel = new Label("Time: 0:00.000");
 
         VBox speedControls = new VBox(5);
-        speedControls.getChildren().addAll(speedLabel, speedSlider, speedPresets);
 
+        timeLabel.setStyle("-fx-text-fill: #eee;");
+        speedLabel.setStyle("-fx-text-fill: #eee;");
+        speedControls.getChildren().addAll(speedLabel, speedSlider, speedPresets);
         controls.getChildren().addAll(playButton, resetButton, timelineSlider, timeLabel, speedControls);
         return controls;
     }
 
     private HBox createMenuBar(Stage primaryStage) {
         HBox menuBar = new HBox(10);
-        menuBar.setStyle("-fx-padding: 10; -fx-background-color: #d0d0d0;");
+        menuBar.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
+        menuBar.setAlignment(Pos.TOP_RIGHT); // Align to top right
 
         Button loadButton = new Button("Load Replay");
+        Button creditsButton = new Button("Credits");
+
+        creditsButton.setOnAction(e -> {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Credits");
+            alert.setHeaderText("FTC Match Replay Viewer");
+            alert.setContentText("Developed by Team 3796 Talons \n Available on GitHub: ");
+            alert.showAndWait();
+        });
         loadButton.setOnAction(e -> {
             FileChooser fileChooser = new FileChooser();
             fileChooser.setTitle("Open Replay File");
@@ -394,7 +452,7 @@ public class ReplayViewer extends Application {
             }
         });
 
-        menuBar.getChildren().add(loadButton);
+        menuBar.getChildren().addAll(loadButton, creditsButton);
         return menuBar;
     }
 
@@ -452,6 +510,14 @@ public class ReplayViewer extends Application {
         Label durationLabel = new Label(String.format("Match Duration: %.1f seconds",
                 replayData.frames.get(replayData.frames.size()-1).timeMs / 1000.0));
 
+
+        teamLabel.setStyle("-fx-text-fill: #eee;");
+        matchLabel.setStyle("-fx-text-fill: #eee;");
+        dateLabel.setStyle("-fx-text-fill: #eee;");
+        framesLabel.setStyle("-fx-text-fill: #eee;");
+        durationLabel.setStyle("-fx-text-fill: #eee;");
+
+
         customDataPanel.getChildren().addAll(teamLabel, matchLabel, dateLabel, framesLabel, durationLabel);
     }
 
@@ -480,7 +546,7 @@ public class ReplayViewer extends Application {
         dataBox.setStyle("-fx-padding: 5; -fx-border-color: #cccccc; -fx-border-radius: 5;");
 
         Label frameDataTitle = new Label("Frame Data");
-        frameDataTitle.setStyle("-fx-font-weight: bold;");
+        frameDataTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #eee;");
         dataBox.getChildren().add(frameDataTitle);
 
         // Add position data
@@ -490,7 +556,7 @@ public class ReplayViewer extends Application {
 
         // Add separator
         Label customDataTitle = new Label("Custom Data");
-        customDataTitle.setStyle("-fx-font-weight: bold; -fx-padding: 5 0 0 0;");
+        customDataTitle.setStyle("-fx-font-weight: bold; -fx-padding: 5 0 0 0;-fx-text-fill: #eee;");
         dataBox.getChildren().add(customDataTitle);
 
         // Add all custom data entries
@@ -503,6 +569,12 @@ public class ReplayViewer extends Application {
             customDataPanel.getChildren().set(customDataPanel.getChildren().size() - 1, dataBox);
         } else {
             customDataPanel.getChildren().add(dataBox);
+        }
+
+        for (javafx.scene.Node node : dataBox.getChildren()) {
+            if (node instanceof Label) {
+                ((Label) node).setStyle("-fx-text-fill: #eee;");
+            }
         }
     }
 
