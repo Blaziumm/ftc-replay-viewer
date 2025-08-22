@@ -6,8 +6,6 @@ A JavaFX application for visualizing FTC match replays. Load `.replay` files to 
 - Robot position and heading display
 - Timeline slider and playback controls
 - Custom data panel for frame telemetry
-- Dark mode UI
-- Credits dialog
 
 ## Setup
 
