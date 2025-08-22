@@ -2,13 +2,11 @@ package org.nexus.ftc.replay;
 
 import javafx.application.Application;
 import javafx.geometry.Pos;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.Slider;
+import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -40,21 +38,23 @@ public class ReplayViewer extends Application {
     private ReplayData replayData;
     private int currentFrameIndex = 0;
     private boolean isPlaying = false;
-    private double playbackSpeed = 0.05; // Super slow default speed (1/20th speed)
+    private double playbackSpeed = 1;
     private Slider timelineSlider;
     private Label timeLabel;
     private AnimationTimer animationTimer;
     private VBox customDataPanel;
-
     private Image fieldBackgroundImage;
 
+    // Add timing variables as instance fields
+    private long lastUpdateTime = 0;
+    private double accumulatedTime = 0;
 
     @Override
     public void start(Stage primaryStage) {
         BorderPane root = new BorderPane();
+        root.setStyle("-fx-background-color: #222222;");
 
-        fieldBackgroundImage = new Image("file:src/main/resources/field_background.png");
-
+        fieldBackgroundImage = new Image(getClass().getResource("/field_background.png").toExternalForm());
         // Field canvas (top-down view)
         fieldCanvas = new Canvas(800, 800);
         gc = fieldCanvas.getGraphicsContext2D();
@@ -77,16 +77,12 @@ public class ReplayViewer extends Application {
         playbackControls.setStyle("-fx-padding: 10; -fx-background-color: #333; -fx-text-fill: #eee;");
         menuBar.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
 
-
-
-
         // Create scene
         Scene scene = new Scene(root, 1200, 900);
-        scene.setFill(Color.web("#222222")); // Dark background
+        scene.setFill(Color.web("#222222"));
         controlPanel.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
         playbackControls.setStyle("-fx-padding: 10; -fx-background-color: #333; -fx-text-fill: #eee;");
         menuBar.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-text-fill: #eee;");
-
 
         customDataPanel.setStyle("-fx-padding: 5; -fx-background-color: #222; -fx-text-fill: #eee;");
 
@@ -94,27 +90,21 @@ public class ReplayViewer extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
 
-
         for (javafx.scene.Node node : customDataPanel.getChildren()) {
             if (node instanceof Label) {
                 ((Label) node).setStyle("-fx-text-fill: #eee;");
             }
         }
 
-
+        // Animation timer for playback
         // Animation timer for playback
         animationTimer = new AnimationTimer() {
-            private long lastUpdateTime = 0;
-            private FrameData lastFrame = null;
-            private double accumulatedTime = 0;
-
             @Override
             public void handle(long now) {
                 if (!isPlaying || replayData == null) return;
 
                 if (lastUpdateTime == 0) {
                     lastUpdateTime = now;
-                    lastFrame = replayData.frames.get(currentFrameIndex);
                     return;
                 }
 
@@ -125,51 +115,47 @@ public class ReplayViewer extends Application {
                 // Limit large jumps
                 adjustedElapsedMs = Math.min(adjustedElapsedMs, 100);
 
-                // Find current frame
-                FrameData currentFrame = replayData.frames.get(currentFrameIndex);
-
                 // Add elapsed time to accumulated time
                 accumulatedTime += adjustedElapsedMs;
 
-                // Find next frame based on accumulated time
+                // Find current frame
+                FrameData currentFrame = replayData.frames.get(currentFrameIndex);
+
+                // Calculate target time
                 long targetTime = currentFrame.timeMs + (long)accumulatedTime;
 
-                // Find the appropriate frame for the target time
-                boolean frameChanged = false;
+                // Advance to the correct frame based on target time
                 while (currentFrameIndex < replayData.frames.size() - 1 &&
                         replayData.frames.get(currentFrameIndex + 1).timeMs <= targetTime) {
+                    FrameData nextFrame = replayData.frames.get(currentFrameIndex + 1);
+                    // Subtract the time difference from accumulated time
+                    accumulatedTime -= (nextFrame.timeMs - currentFrame.timeMs);
                     currentFrameIndex++;
-                    frameChanged = true;
+                    currentFrame = nextFrame;
                 }
 
-                if (frameChanged) {
-                    // Reset accumulated time based on actual frame time
-                    FrameData newFrame = replayData.frames.get(currentFrameIndex);
-                    accumulatedTime -= (newFrame.timeMs - currentFrame.timeMs);
-
-                    // Update display with interpolation between frames
-                    updateDisplayWithInterpolation(currentFrame, newFrame, accumulatedTime /
-                            Math.max(1, newFrame.timeMs - currentFrame.timeMs));
+                // Update display with interpolation
+                if (currentFrameIndex < replayData.frames.size() - 1) {
+                    FrameData nextFrame = replayData.frames.get(currentFrameIndex + 1);
+                    double timeDiff = nextFrame.timeMs - currentFrame.timeMs;
+                    double factor = timeDiff > 0 ? accumulatedTime / timeDiff : 0;
+                    factor = Math.max(0, Math.min(1, factor));
+                    updateDisplayWithInterpolation(currentFrame, nextFrame, factor);
                 } else {
-                    // Interpolate between current frame and next frame
-                    if (currentFrameIndex < replayData.frames.size() - 1) {
-                        FrameData nextFrame = replayData.frames.get(currentFrameIndex + 1);
-                        double factor = accumulatedTime /
-                                Math.max(1, nextFrame.timeMs - currentFrame.timeMs);
-                        updateDisplayWithInterpolation(currentFrame, nextFrame, factor);
-                    }
+                    // At the last frame
+                    updateDisplay();
                 }
 
                 // Update slider position
                 updateTimelineSlider();
 
                 // Loop playback when reaching the end
-                if (currentFrameIndex >= replayData.frames.size() - 1) {
+                if (currentFrameIndex >= replayData.frames.size() - 1 &&
+                        accumulatedTime >= (replayData.frames.get(replayData.frames.size() - 1).timeMs -
+                                replayData.frames.get(Math.max(0, replayData.frames.size() - 2)).timeMs)) {
                     currentFrameIndex = 0;
                     accumulatedTime = 0;
-                    lastUpdateTime = now;
-                    // Optionally update display for the first frame
-                    updateDisplay();
+                    lastUpdateTime = 0; // Reset timer
                 }
 
                 lastUpdateTime = now;
@@ -300,8 +286,6 @@ public class ReplayViewer extends Application {
         panel.setPrefWidth(300);
 
         Label title = new Label("Match Data");
-
-
         title.setStyle("-fx-font-weight: bold; -fx-font-size: 16; -fx-text-fill: #eee; ");
 
         // Create panel for custom data that will be updated when replay is loaded
@@ -321,8 +305,7 @@ public class ReplayViewer extends Application {
             playButton.setText(isPlaying ? "Pause" : "Play");
 
             if (isPlaying) {
-                // Reset timer to prevent jumps
-                animationTimer.stop();
+                lastUpdateTime = 0; // Reset timer to prevent jumps
                 animationTimer.start();
             } else {
                 animationTimer.stop();
@@ -333,10 +316,12 @@ public class ReplayViewer extends Application {
         resetButton.setOnAction(e -> {
             isPlaying = false;
             animationTimer.stop();
-
             currentFrameIndex = 0;
+            accumulatedTime = 0;
+            lastUpdateTime = 0;
             updateDisplay();
             updateTimelineSlider();
+            playButton.setText("Play");
         });
 
         timelineSlider = new Slider();
@@ -348,7 +333,10 @@ public class ReplayViewer extends Application {
                 animationTimer.stop();
 
                 currentFrameIndex = (int)Math.floor(newVal.doubleValue() * (replayData.frames.size() - 1) / 100);
+                accumulatedTime = 0;
+                lastUpdateTime = 0;
                 updateDisplay();
+                playButton.setText("Play");
             }
         });
 
@@ -360,7 +348,8 @@ public class ReplayViewer extends Application {
         speedSlider.setMajorTickUnit(0.1);
         speedSlider.setValue(1);
 
-        Label speedLabel = new Label("Speed: 0.05x (1/20 speed)");
+        Label speedLabel = new Label("Speed: 1.00x"); // Initial label matches slider
+
         speedSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             playbackSpeed = newVal.doubleValue();
 
@@ -373,49 +362,13 @@ public class ReplayViewer extends Application {
             }
         });
 
-        // Ultra-slow speed presets
-        HBox speedPresets = new HBox(5);
-        speedPresets.setStyle("-fx-padding: 5 0 0 0;");
-
-        Button speed001Button = new Button("0.01x");
-        speed001Button.setOnAction(e -> {
-            playbackSpeed = 0.01;
-            speedSlider.setValue(0.01);
-        });
-
-        Button speed005Button = new Button("0.05x");
-        speed005Button.setOnAction(e -> {
-            playbackSpeed = 0.05;
-            speedSlider.setValue(0.05);
-        });
-
-        Button speed01Button = new Button("0.1x");
-        speed01Button.setOnAction(e -> {
-            playbackSpeed = 0.1;
-            speedSlider.setValue(0.1);
-        });
-
-        Button speed025Button = new Button("0.25x");
-        speed025Button.setOnAction(e -> {
-            playbackSpeed = 0.25;
-            speedSlider.setValue(0.25);
-        });
-
-        Button speed05Button = new Button("0.5x");
-        speed05Button.setOnAction(e -> {
-            playbackSpeed = 0.5;
-            speedSlider.setValue(0.5);
-        });
-
-        speedPresets.getChildren().addAll(speed001Button, speed005Button, speed01Button, speed025Button, speed05Button);
-
         timeLabel = new Label("Time: 0:00.000");
 
         VBox speedControls = new VBox(5);
 
         timeLabel.setStyle("-fx-text-fill: #eee;");
         speedLabel.setStyle("-fx-text-fill: #eee;");
-        speedControls.getChildren().addAll(speedLabel, speedSlider, speedPresets);
+        speedControls.getChildren().addAll(speedLabel, speedSlider);
         controls.getChildren().addAll(playButton, resetButton, timelineSlider, timeLabel, speedControls);
         return controls;
     }
@@ -432,7 +385,17 @@ public class ReplayViewer extends Application {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
             alert.setTitle("Credits");
             alert.setHeaderText("FTC Match Replay Viewer");
-            alert.setContentText("Developed by Team 3796 Talons \n Available on GitHub: ");
+
+            // Apply dark mode stylesheet
+            alert.getDialogPane().getStylesheets().add(getClass().getResource("/dark-alert.css").toExternalForm());
+
+            VBox content = new VBox(5);
+            content.getChildren().add(new Label("Developed by Team 3796 Talons"));
+            Hyperlink githubLink = new Hyperlink("Available on GitHub: https://github.com/Blaziumm/ftc-replay-viewer");
+            githubLink.setOnAction(ev -> getHostServices().showDocument("https://github.com/Blaziumm/ftc-replay-viewer"));
+            content.getChildren().add(githubLink);
+            alert.getDialogPane().setContent(content);
+
             alert.showAndWait();
         });
         loadButton.setOnAction(e -> {
@@ -510,13 +473,11 @@ public class ReplayViewer extends Application {
         Label durationLabel = new Label(String.format("Match Duration: %.1f seconds",
                 replayData.frames.get(replayData.frames.size()-1).timeMs / 1000.0));
 
-
         teamLabel.setStyle("-fx-text-fill: #eee;");
         matchLabel.setStyle("-fx-text-fill: #eee;");
         dateLabel.setStyle("-fx-text-fill: #eee;");
         framesLabel.setStyle("-fx-text-fill: #eee;");
         durationLabel.setStyle("-fx-text-fill: #eee;");
-
 
         customDataPanel.getChildren().addAll(teamLabel, matchLabel, dateLabel, framesLabel, durationLabel);
     }
