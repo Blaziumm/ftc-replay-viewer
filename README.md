@@ -20,7 +20,7 @@ A JavaFX application for visualizing FTC match replays. Load `.replay` files to 
 2. **Download Latest Release:**
    --Coming Soon--
 
-4. **Put the Robot Component Into Your Teamcode:** Can be found [here](https://gist.github.com/Blaziumm/d439542c0a41481c1b11d9c34db8675b.js).
+4. **Put the Robot Component Into Your Teamcode:** Can be found [here](https://gist.github.com/Blaziumm/d439542c0a41481c1b11d9c34db8675b).
 
 
 # Usage of MatchRecorder:
