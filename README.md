@@ -2,6 +2,11 @@
 
 A JavaFX application for visualizing FTC match replays. Load `.replay` files to view robot movement, match data, and custom telemetry.
 
+
+![Demo of Application](/.gitresources/ApplicationDemo.png)
+
+
+## Features:
 - Top-down FTC field visualization
 - Robot position and heading display
 - Timeline slider and playback controls
