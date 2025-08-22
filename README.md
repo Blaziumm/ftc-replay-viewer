@@ -18,7 +18,7 @@ A JavaFX application for visualizing FTC match replays. Load `.replay` files to 
    - Java 11+
 
 2. **Download Latest Release:**
-   --Coming Soon--
+   [Here!](https://github.com/Blaziumm/ftc-replay-viewer/releases/tag/v1.0.0-beta)
 
 4. **Put the Robot Component Into Your Teamcode:** Can be found [here](https://gist.github.com/Blaziumm/d439542c0a41481c1b11d9c34db8675b).
 
